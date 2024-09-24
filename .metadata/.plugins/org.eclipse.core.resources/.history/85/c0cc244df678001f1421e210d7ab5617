@@ -1,0 +1,30 @@
+/**
+ * @author pravallika
+ */
+package com.paypilot.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.paypilot.model.Users;
+
+/**
+ * UserRepository use to handle the database operations for Users entity/model
+ */
+public interface UserRepository extends JpaRepository<Users, String>{
+	
+	/**
+	 * Use to find the user based on email id
+	 * @param email The email id of the user
+	 * @return The user or null based upon the email id
+	 */
+	@Query(value="from Users where email=:email")
+	Optional<Users> findByEmail(@Param("email") String email);
+	
+	@Query("select u from Users u where email=:name")
+	Optional<Users> findByName(@Param("name") String name);
+
+}

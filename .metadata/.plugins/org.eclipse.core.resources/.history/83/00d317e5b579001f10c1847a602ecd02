@@ -1,0 +1,112 @@
+/**
+ * @author pravallika
+ */
+
+package com.paypilot.controller;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.paypilot.model.Users;
+import com.paypilot.service.JwtService;
+import com.paypilot.service.LoginHandlerService;
+import com.paypilot.service.LogoutHandlerService;
+import com.paypilot.service.UserService;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+
+
+/**
+ * ContentController manages the API endpoints related to login
+ * This controller is responsible for handling requests related to login and logoff
+ */
+@RestController
+public class LoginController {
+	
+	/**
+	 * Represents the JwtService to handle token generation tasks
+	 */
+    @Autowired
+    private JwtService jwtService;
+    
+    /**
+     * Represents LogoutHandlerService to handle log out related tasks
+     */
+    @Autowired
+    private LogoutHandlerService logoutHandlerService;
+    
+    /**
+     * Represents LoginHandlerService to handle login related tasks which consists of verifying the OTP
+     */
+    @Autowired
+    private LoginHandlerService loginHandlerService;
+    
+    /**
+     * Handle POST requests to the /authentictae endpoint
+     * @param authentication The authentication object that contains the information about the username and password 
+	 * @param response The HTTP response
+	 * @throws Exception if the user cannot be found in the database based on the provided username
+     */
+	@PostMapping("/authenticate")
+    public void authenticateAndGetToken(Authentication authentication,HttpServletResponse response) throws Exception {
+        loginHandlerService.authenticateAndGetToken(authentication,response);
+    }
+	
+	/**
+	 * Handle POST requests to the /verify-otp endpoint
+	 * @param email The recipient email id
+	 * @param otp The OYP which the user received
+	 * @param response The HTTP response
+	 * @throws Exception if the user give wrong OTP or does not gives an OTP
+	 */
+	@PostMapping("/verify-otp")
+	public ResponseEntity<?> verifyOtp(@RequestParam String email,@RequestParam String otp,HttpServletResponse response,HttpServletRequest request) {
+	   
+		return loginHandlerService.verifyOtp(email, otp, response);
+		
+	}
+	
+	/**
+	 * Handle POST requests to the /refresh-token endpoint
+	 * @param authorizationHeader Provides the credentials that authenticate the user in this case the refresh token
+	 * @return A new access token generated using refresh token or else throw a exception in case refresh token is not valid
+	 */
+	@PreAuthorize("hasAuthority('SCOPE_REFRESH_TOKEN')")
+	@PostMapping("/refresh-token")
+	public ResponseEntity<?> getAccessToken(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorizationHeader){
+		return ResponseEntity.ok(jwtService.getAccessTokenUsingRefreshToken(authorizationHeader));
+	}
+	
+	/**
+	 * Handle POST requests to the /logOff endpoint
+	 * @param refreshToken The refresh token
+	 * @return A string that represent the logout is success
+	 * @throws Exception 
+	 */
+	@PostMapping("/logOff")
+	public ResponseEntity<?> getUserLogout() {
+		String refreshToken=jwtService.getLocallySavedRefreshToken();
+		return logoutHandlerService.getLogout(refreshToken);
+	}
+	
+	@GetMapping("/name/{email}")
+	public List<Users> getUserByname(@PathVariable String email) {
+		return loginHandlerService.getUserByName(email);
+	}
+	
+	
+
+}

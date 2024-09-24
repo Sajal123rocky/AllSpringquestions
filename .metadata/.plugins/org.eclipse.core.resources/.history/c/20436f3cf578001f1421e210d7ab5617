@@ -1,0 +1,130 @@
+/**
+ * @author pravallika
+ */
+package com.paypilot.service;
+
+import java.time.LocalDateTime;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+
+import com.paypilot.model.OtpDetails;
+import com.paypilot.model.Users;
+import com.paypilot.repository.UserRepository;
+
+
+import jakarta.servlet.http.HttpServletResponse;
+/**
+ * LoginHandlerService is used to handle the User authentication
+ * It also handles the otp verification related tasks
+ * It generates the token after the OTP is successfully verified
+ */
+@Service
+public class LoginHandlerService {
+
+	/**
+	 * Represent UserRepository which is used to handle the database tasks related to User model
+	 */
+	@Autowired
+	private UserRepository userRepository;
+	
+	/**
+	 * Represent UserService which is used to handle the services related to user
+	 */
+	@Autowired
+	private UserService userService;
+	
+	/**
+	 * Represent EmailService service which is used to handle the service related to email
+	 */
+	private final EmailService emailService;
+	
+	/**
+	 * Represent the JwtService which is used to handle the service related to tokens
+	 */
+	private final JwtService jwtService;
+	
+	/**
+	 * Constructor based injection to inject the values for emailService and jwtService
+	 * @param emailService The injection value for emailService
+	 * @param jwtService The injection value for jwtService
+	 */
+	public LoginHandlerService(EmailService emailService,JwtService jwtService) {
+		this.emailService=emailService;
+		this.jwtService=jwtService;
+	}
+	
+	/**
+	 * Used to store the otp generated
+	 */
+	public Map<String, OtpDetails> otpStore = new ConcurrentHashMap<>();
+	
+	/**
+	 * Used to authenticate user based on user name and password and if success send otp to the email id
+	 * @param authentication The authentication object that contains the information about the username and password 
+	 * @param response The HTTP response
+	 * @throws Exception if the user cannot be found in the database based on the provided username
+	 */
+	public void authenticateAndGetToken(Authentication authentication,HttpServletResponse response) throws Exception {
+		//represents a user
+		Users u;
+		String username=authentication.getName();
+		if(username.contains("@"))
+			u=userRepository.findByEmail(username).orElse(null);
+		else
+			u=userRepository.findById(username).orElse(null);
+		//throw exception if user not found based on user name
+		if(u==null)
+			throw new Exception();
+		
+		//represent the email to which the otp will be sended
+		String email=u.getEmail();
+		//send otp to the recipient email id
+		String emailResponse=emailService.sendOTP(email);
+		//use to store the otp in the map which is used to authenticate the otp sended to user email id
+    	otpStore.put(email, new OtpDetails(emailResponse, LocalDateTime.now()));
+    	//used to set the response
+    	response.setStatus(HttpServletResponse.SC_OK);
+    	response.getWriter().write("Otp Generated and send to the registered email id");
+	}
+	
+	/**
+	 * Used to verify the OTP which is send to the recipient email id and generate the access and refresh token
+	 * @param email The recipient email id
+	 * @param otp The OYP which the user received
+	 * @param response The HTTP response
+	 * @throws Exception if the user give wrong OTP or does not gives an OTP
+	 */
+	public ResponseEntity<?> verifyOtp( String email, String otp,HttpServletResponse response) {
+		//get the details of the otp
+	    OtpDetails otpDetails = otpStore.get(email);
+	    //check if the otp is provided or not
+	    if (otpDetails == null) {
+	    	return ResponseEntity.status(HttpServletResponse.SC_BAD_REQUEST).body("No OTP provided");
+	    }
+
+	    //check if the OTP is expired (5 minutes expiration)
+	    if (otpDetails.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(5))) {
+	    	return ResponseEntity.status(HttpServletResponse.SC_BAD_REQUEST).body("OTP Expired");
+	    }
+	    //check if the OTP provide by user is correct or not
+	    if (otpDetails.getOtp().equals(otp)) {
+	        otpStore.remove(email); // Clear the OTP after successful verification
+	        //generate tokens
+	      String res= jwtService.getJwtTokens(userService.loadUserByUsername(email),response);
+	      //used to send the response 
+	    	return ResponseEntity.status(HttpServletResponse.SC_OK).body(res);
+	    } else {
+	    	return ResponseEntity.status(HttpServletResponse.SC_BAD_REQUEST).body("Wrong OTP");
+	    }
+	}
+	
+	
+	
+	
+}
